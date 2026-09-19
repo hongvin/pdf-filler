@@ -175,6 +175,18 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 }
 .seg-btn.is-on { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
 
+/* Checkerboard so the stamp's transparent background is obvious, not assumed. */
+.stamp-thumb {
+  width: 72px; height: 72px; flex: none; object-fit: contain; padding: 3px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background-color: var(--panel);
+  background-image:
+    linear-gradient(45deg, var(--panel-2) 25%, transparent 25%, transparent 75%, var(--panel-2) 75%),
+    linear-gradient(45deg, var(--panel-2) 25%, transparent 25%, transparent 75%, var(--panel-2) 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 5px 5px;
+}
+
 /* ---------------------------------------------------------------- table */
 .table-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
 table.fields { width: 100%; border-collapse: collapse; font-size: 12.5px; }

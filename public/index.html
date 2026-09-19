@@ -131,10 +131,17 @@
     <div class="card" id="stampCard" hidden>
       <h2>Company stamp</h2>
       <div class="seg" role="tablist">
-        <button class="seg-btn is-on" data-stamp="generated" type="button">Generate one</button>
-        <button class="seg-btn" data-stamp="image" type="button">Use a scan</button>
+        <button class="seg-btn is-on" data-stamp="logo" type="button">Company logo</button>
+        <button class="seg-btn" data-stamp="generated" type="button">Generate one</button>
+        <button class="seg-btn" data-stamp="upload" type="button">Upload a scan</button>
       </div>
-      <div id="stampGenOpts">
+      <div id="stampLogoOpts">
+        <div class="inline">
+          <img id="stampLogoThumb" class="stamp-thumb" alt="The bundled company stamp" hidden>
+          <span id="stampLogoState" class="muted small">Loading…</span>
+        </div>
+      </div>
+      <div id="stampGenOpts" hidden>
         <div class="grid2">
           <label class="field">
             <span>Centre line 1</span>
@@ -143,10 +150,6 @@
           <label class="field">
             <span>Centre line 2</span>
             <input id="vStampLine2" type="text" placeholder="(1529940-V)">
-          </label>
-          <label class="field">
-            <span>Size <output id="stampScaleOut" class="out">1.0×</output></span>
-            <input id="vStampScale" type="range" min="0.5" max="1.8" step="0.05" value="1">
           </label>
           <label class="field">
             <span>Bottom of ring</span>
@@ -169,6 +172,10 @@
         </div>
         <p class="hint">A PNG with a transparent background works best.</p>
       </div>
+      <label class="field">
+        <span>Size <output id="stampScaleOut" class="out">1.0×</output></span>
+        <input id="vStampScale" type="range" min="0.5" max="1.8" step="0.05" value="1">
+      </label>
     </div>
 
     <div class="actions" id="actions" hidden>

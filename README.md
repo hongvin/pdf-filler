@@ -38,8 +38,18 @@ Every guess is shown in a table and is overridable before you fill.
 **3. Fills it.** pdf-lib writes the values into the page content stream. The
 printed dots are whited out first so the typed text does not sit on top of them.
 Text uses Times-Roman to match the template; the signature is set in one of four
-bundled script faces (Kaushan Script by default); the stamp is either drawn from
-vector primitives or an uploaded scan.
+bundled script faces (Kaushan Script by default).
+
+The stamp has three sources, picked from the segmented control:
+
+| Mode | What is drawn |
+|---|---|
+| **Company logo** (default) | `public/stamp/company-stamp.png` — the real stamp artwork, bundled with the app. Works with no upload. |
+| **Generate one** | A vector ring stamp drawn from the company name and registration numbers. Use this when you have no artwork. |
+| **Upload a scan** | Your own image, kept in `localStorage`. |
+
+All three are sized off one constant (`STAMP_DIAMETER_EM` in `lib/fill.js`), so
+switching modes changes the artwork, never the footprint.
 
 The PDF never leaves the browser — there is no upload step.
 
@@ -60,6 +70,8 @@ public/                 ← the deployable site
     fill.js             ← pdf-lib writer, AcroForm support
   vendor/               ← pdf.js, pdf-lib, fontkit (vendored, no CDN at runtime)
   fonts/                ← four script faces for the signature (all OFL)
+  stamp/
+    company-stamp.png   ← the bundled company stamp artwork
 functions/
   _middleware.js        ← HTTP Basic auth gate
   api/config.js         ← serves BIDDER_* env vars
@@ -91,8 +103,34 @@ npx wrangler pages secret put BIDDER_IC     --project-name pdf-filler
 | `BIDDER_COMPANY_REG` | Company registration number |
 | `SIGNATURE_TEXT` | What the cursive signature reads. Default `HongVin`. |
 | `SIGNATURE_FONT` | Which bundled script face to sign with: `KaushanScript` (default), `Norican`, `MrDafoe` or `GreatVibes`. |
-| `STAMP_LINE2` | Second centre line of the generated stamp — the company's old ROC number, e.g. `(1529940-V)`. |
-| `STAMP_BOTTOM_TEXT` | Optional bottom arc for the generated stamp. Leave it unset — the default — and a five-pointed star is drawn instead. |
+| `STAMP_LINE2` | Second centre line of the **generated** stamp — the company's old ROC number, e.g. `(1529940-V)`. Ignored in the other two modes. |
+| `STAMP_BOTTOM_TEXT` | Optional bottom arc for the **generated** stamp. Leave it unset — the default — and a five-pointed star is drawn instead. |
+
+### Replacing the bundled stamp
+
+`public/stamp/company-stamp.png` is the stamp the app draws by default. To swap
+in different artwork, drop the file over it — nothing else needs to change.
+
+Two things are worth knowing:
+
+- **It must have a transparent background**, not a white one, or the white box
+  will print over the form. A PNG at roughly 460 × 460 is plenty.
+- **Trim the transparent margin.** Sizing is driven off the image's *frame*, so
+  padding around the artwork makes the stamp print smaller than it should. The
+  shipped file was trimmed to its ink bounding box for exactly this reason.
+  Anything with a visible transparent border can be fixed with:
+
+  ```python
+  from PIL import Image
+  im = Image.open('logo.png').convert('RGBA')
+  box = im.getchannel('A').point(lambda v: 255 if v > 8 else 0).getbbox()
+  im.crop(box).save('public/stamp/company-stamp.png', optimize=True)
+  ```
+
+The artwork is fetched at boot and held in memory. It is deliberately **not**
+written to `localStorage`: it is ~180 KB of base64, never changes, and would eat
+a third of the quota for nothing. If the fetch fails the app says so and falls
+back to the generated stamp rather than drawing nothing.
 
 ### Defaults currently in place
 
@@ -159,13 +197,35 @@ same detector, and the encoding Word and LibreOffice actually emit.
 `tools/check-detection.mjs` asserts the detection behaviour directly, without
 needing a PDF from outside the repo.
 
+`tools/check-ui-refs.mjs` is a static cross-check between `app.js` and
+`index.html`. The UI reaches into the markup by id, which is a link no bundler
+or test can see — rename an id and the code silently reads `null` on whichever
+branch touches it. It also checks that the stamp modes in the markup, in `app.js`
+and in the writer agree, and that the legacy `image` mode survives only as a
+migration.
+
 ```bash
 node tools/make-fixtures.mjs
 node tools/check-detection.mjs
+node tools/check-ui-refs.mjs
 node tools/test.mjs tools/fixture-acroform.pdf  tools/out-acroform.pdf
 node tools/test.mjs tools/fixture-underline.pdf tools/out-underline.pdf
 node tools/test.mjs tools/fixture-rect.pdf      tools/out-rect.pdf
 node tools/test.mjs path/to/form.pdf            tools/filled.pdf
+```
+
+### Checking the stamp
+
+The two stamp modes must occupy the same box. `tools/stamp-compare.mjs` renders
+both, onto the real template *and* onto a blank page carrying nothing but the
+stamp — measuring on the template alone is useless, because the template's own
+printed text sits in the same window and the measurement just picks that up.
+`tools/stamp-render.py` then rasterises the isolated pair and reports the ink
+bounding box of each:
+
+```bash
+node tools/stamp-compare.mjs path/to/form.pdf
+python tools/stamp-render.py          # prints both footprints and the delta
 ```
 
 Rasterise any result to look at it:
@@ -223,6 +283,20 @@ the Functions bundle did not upload.
   that clean away to an empty string.
 - **The stamp is larger than the line it sits on.** That is true of real stamps
   too. Use the size slider if it collides with something you care about.
+- **Both stamp modes are sized off one constant, and the image path used to be
+  wrong.** `drawStamp` in `fill.js` derives the diameter from
+  `STAMP_DIAMETER_EM` (8.66em — the generated ring's radius is 4.33em, so that is
+  its diameter). The image path previously used 4.6em, barely half, so an
+  uploaded scan printed at about half the size of a generated stamp and the two
+  modes did not line up. Anything that sizes a stamp must read that constant.
+  Measured on a blank page: generated 105.12pt, bundled artwork 102.96pt, centres
+  identical. The residual ~2% is the generated ring's own stroke width (it is
+  stroked *on* the radius, so half the stroke falls outside) plus anti-aliasing
+  on the artwork's edge — not a sizing error.
+- **The bundled stamp is fetched, not stored.** It lives at
+  `public/stamp/company-stamp.png` and is read into memory once at boot. Putting
+  it in `localStorage` instead would burn ~180 KB of a ~5 MB quota on something
+  that never changes.
 - **Drawn rules are ambiguous, so they have to earn their place.** A line in a
   PDF is a fillable blank, an underline under a word, or a table/page rule — and
   only the first is a field. A naive scan of the operator list picks up all

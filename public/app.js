@@ -38,6 +38,19 @@ const STORE_KEY = 'pdfFiller.settings.v1';
 const IC_STORE_KEY = 'pdfFiller.ic.v1';
 
 /**
+ * The company stamp artwork shipped with the app.
+ *
+ * Deliberately *not* stored in localStorage: it is ~180 KB of base64 that would
+ * eat a third of the quota, never changes, and is already on the server. It is
+ * fetched once at boot and kept in memory.
+ */
+const BUNDLED_STAMP_URL = './stamp/company-stamp.png';
+
+/** Stamp sources. `image` is the legacy id for `upload`, migrated on load. */
+const STAMP_MODES = ['logo', 'generated', 'upload'];
+const DEFAULT_STAMP_MODE = 'logo';
+
+/**
  * Bundled signature typefaces. All SIL Open Font License.
  *
  * `subset: false` is only needed for faces pdf-lib's bundled subsetter mangles
@@ -63,7 +76,7 @@ const els = {
   previewEmpty: $('previewEmpty'), legend: $('legend'), configPill: $('configPill'),
   banner: $('banner'), fillBtn: $('fillBtn'), fillStatus: $('fillStatus'),
   resetBtn: $('resetBtn'), stampGenOpts: $('stampGenOpts'), stampImgOpts: $('stampImgOpts'),
-  stripRow: $('stripRow'),
+  stampLogoOpts: $('stampLogoOpts'), stripRow: $('stripRow'),
 };
 
 /** Scans are kept in localStorage as base64, which caps out around 5 MB. */
@@ -80,12 +93,14 @@ const state = {
   settings: {
     name: '', ic: '', company: '', companyReg: '', date: '',
     sigText: 'HongVin', sigFont: 'KaushanScript', sigScale: 1,
-    stampMode: 'generated', stampLine1: '', stampLine2: '', stampBottom: '',
+    stampMode: DEFAULT_STAMP_MODE, stampLine1: '', stampLine2: '', stampBottom: '',
     stampBottomMode: 'star', stampScale: 1,
     sigImage: null, stampImage: null,
   },
   configLoaded: false,
   icFromServer: false,
+  bundledStamp: null,        // data URL of the bundled artwork, once fetched
+  bundledStampError: false,
   staleAnnotations: 0,
   stripAnnotations: true,
   rendering: false,
@@ -103,6 +118,15 @@ function loadSettings() {
   } catch { /* ignore corrupt storage */ }
   if (!state.settings.companyReg) state.settings.companyReg = '';
   state.settings.ic = ''; // never restored from disk; comes from the server or the user
+
+  // Migrate the stamp mode. Early builds only had 'generated' and 'image'; the
+  // image source is now split into the bundled artwork ('logo') and a user scan
+  // ('upload'), so 'image' means the latter. Anything unrecognised falls back to
+  // the default rather than leaving every stamp panel hidden.
+  if (state.settings.stampMode === 'image') state.settings.stampMode = 'upload';
+  if (!STAMP_MODES.includes(state.settings.stampMode)) {
+    state.settings.stampMode = DEFAULT_STAMP_MODE;
+  }
 }
 
 let saveTimer = null;
@@ -195,6 +219,30 @@ function showBanner(msg) {
   els.banner.hidden = false;
 }
 
+/**
+ * Fetch the bundled stamp artwork once, as a data URL.
+ *
+ * Failure is not fatal — the stamp simply falls back to the generated ring — so
+ * this never throws, it just records the problem for `syncInputs` to report.
+ */
+async function loadBundledStamp() {
+  try {
+    const res = await fetch(BUNDLED_STAMP_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    state.bundledStamp = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('could not read the image'));
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn('bundled stamp unavailable:', err);
+    state.bundledStampError = true;
+  }
+  syncInputs();
+}
+
 /* ------------------------------------------------------------------ */
 /* inputs                                                              */
 /* ------------------------------------------------------------------ */
@@ -226,6 +274,19 @@ function syncInputs() {
   $('vSigFont').value = font.id;
   $('vStampBottomMode').value = s.stampBottomMode;
   $('stampBottomTextRow').hidden = s.stampBottomMode !== 'text';
+
+  const thumb = $('stampLogoThumb');
+  if (state.bundledStamp) {
+    thumb.src = state.bundledStamp;
+    thumb.hidden = false;
+  } else {
+    thumb.hidden = true;
+  }
+  $('stampLogoState').textContent = state.bundledStamp
+    ? 'The company stamp bundled with this app.'
+    : state.bundledStampError
+      ? 'The bundled stamp could not be loaded, so a generated one will be drawn instead.'
+      : 'Loading the bundled stamp…';
 
   setStampMode(s.stampMode);
 }
@@ -322,8 +383,9 @@ function setStampMode(mode) {
   document.querySelectorAll('.seg-btn[data-stamp]').forEach(b => {
     b.classList.toggle('is-on', b.dataset.stamp === mode);
   });
+  els.stampLogoOpts.hidden = mode !== 'logo';
   els.stampGenOpts.hidden = mode !== 'generated';
-  els.stampImgOpts.hidden = mode !== 'image';
+  els.stampImgOpts.hidden = mode !== 'upload';
 }
 
 function readImage(e, key) {
@@ -738,8 +800,21 @@ function buildConfig() {
     stampScale: Number(s.stampScale) || 1,
     stripAnnotations: state.stripAnnotations,
     signatureImageBytes: s.sigImage ? dataUrlToBytes(s.sigImage) : null,
-    stampImageBytes: s.stampImage ? dataUrlToBytes(s.stampImage) : null,
+    stampImageBytes: stampBytes(),
   };
+}
+
+/**
+ * Which bytes the stamp is drawn from — or null to draw the vector ring.
+ *
+ * The single place this decision is made, so the UI's warnings and the writer
+ * can never disagree about what "stamp image" means for a given mode.
+ */
+function stampBytes() {
+  const s = state.settings;
+  if (s.stampMode === 'upload') return s.stampImage ? dataUrlToBytes(s.stampImage) : null;
+  if (s.stampMode === 'logo') return state.bundledStamp ? dataUrlToBytes(state.bundledStamp) : null;
+  return null; // 'generated'
 }
 
 function dataUrlToBytes(dataUrl) {
@@ -761,12 +836,18 @@ async function fillAndDownload() {
   if (state.blanks.some(b => b.role === 'signature') && !cfg.signatureText && !cfg.signatureImageBytes) {
     missing.push('signature text');
   }
-  // "Use a scan" with nothing uploaded is invisible to the writer — it just
-  // falls back to the generated stamp — so surface it here rather than silently
+  // Every stamp mode can end up with no image at all — an upload that was never
+  // made, or artwork that failed to load. In both cases the writer silently
+  // falls back to the generated ring stamp, so say so up front rather than
   // drawing something the user did not ask for.
-  if (state.blanks.some(b => b.role === 'stamp') && cfg.stampMode === 'image' && !cfg.stampImageBytes) {
-    missing.push('stamp image — "Use a scan" is selected but nothing has been uploaded, '
-      + 'so a generated stamp will be drawn instead');
+  if (state.blanks.some(b => b.role === 'stamp') && !cfg.stampImageBytes) {
+    if (cfg.stampMode === 'upload') {
+      missing.push('stamp image — "Upload a scan" is selected but nothing has been uploaded, '
+        + 'so a generated stamp will be drawn instead');
+    } else if (cfg.stampMode === 'logo') {
+      missing.push('stamp image — the bundled company stamp could not be loaded, '
+        + 'so a generated stamp will be drawn instead');
+    }
   }
   if (missing.length && !confirm(`Not everything is filled in:\n\n  • ${missing.join('\n  • ')}\n\nFill the PDF anyway?`)) return;
 
@@ -834,7 +915,8 @@ populateFontSelect();
 wireInputs();
 wireDropzone();
 syncInputs();
-await loadConfig();
+// Independent round trips — the config API and the stamp artwork.
+await Promise.all([loadConfig(), loadBundledStamp()]);
 
 let resizeTimer = null;
 window.addEventListener('resize', () => {

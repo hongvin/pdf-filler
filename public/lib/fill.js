@@ -11,6 +11,17 @@ import { drawGeneratedStamp } from './stamp.js';
 const DEFAULT_INK = [0, 0, 0];            // signature ink black
 const DEFAULT_STAMP = [0, 0, 0];          // stamp ink black
 
+/**
+ * Diameter of the stamp, as a multiple of the body text size.
+ *
+ * Both stamp modes have to agree on this. The generated ring is drawn at radius
+ * 4.33em, so its diameter is 8.66em — and the image path used to draw at 4.6em,
+ * barely half that, which made an uploaded scan come out undersized next to a
+ * generated one. Driving both off this constant means switching modes changes
+ * the artwork, never the footprint.
+ */
+export const STAMP_DIAMETER_EM = 8.66;
+
 /** Shrink a font size until the string fits `maxWidth`. */
 function fitSize(font, text, maxWidth, startSize) {
   let size = startSize;
@@ -329,16 +340,19 @@ function drawStamp(page, blank, { sans, sansBold, stampImage, config, PDFLib, rg
   // The stamp is big enough to overlap the line above, so it sits in the right
   // half of its line — otherwise it lands on top of the signature.
   const cx = blank.x0 + width * 0.72;
+  const cy = blank.baseline + size * 0.35;
+  const diameter = size * STAMP_DIAMETER_EM * (config.stampScale || 1);
 
   if (stampImage) {
-    const targetH = size * 4.6 * (config.stampScale || 1);
-    const scale = targetH / stampImage.height;
+    // Height is driven by the shared diameter so this lands in exactly the same
+    // box as the generated ring; the width follows the artwork's own aspect.
+    const scale = diameter / stampImage.height;
     const w = stampImage.width * scale;
     page.drawImage(stampImage, {
       x: cx - w / 2,
-      y: blank.baseline - size * 2.0,
+      y: cy - diameter / 2,
       width: w,
-      height: targetH,
+      height: diameter,
       opacity: config.stampOpacity != null ? config.stampOpacity : 0.92,
     });
     return;
@@ -353,8 +367,8 @@ function drawStamp(page, blank, { sans, sansBold, stampImage, config, PDFLib, rg
 
   drawGeneratedStamp(page, {
     cx,
-    cy: blank.baseline + size * 0.35,
-    r: size * 4.33 * (config.stampScale || 1),
+    cy,
+    r: diameter / 2,
     company: config.companyName || '',
     lines,
     star: config.stampStar !== false,

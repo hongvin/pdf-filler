@@ -75,6 +75,7 @@ const els = {
   stampCard: $('stampCard'), actions: $('actions'), preview: $('preview'),
   previewEmpty: $('previewEmpty'), legend: $('legend'), configPill: $('configPill'),
   banner: $('banner'), fillBtn: $('fillBtn'), fillStatus: $('fillStatus'),
+  fillActions: $('fillActions'),
   resetBtn: $('resetBtn'), stampGenOpts: $('stampGenOpts'), stampImgOpts: $('stampImgOpts'),
   stampLogoOpts: $('stampLogoOpts'), stripRow: $('stripRow'),
 };
@@ -476,6 +477,7 @@ function resetDocumentState() {
   els.signCard.hidden = true;
   els.stampCard.hidden = true;
   els.actions.hidden = true;
+  els.fillActions.hidden = true;
   els.stripRow.hidden = true;
 
   els.preview.innerHTML = '';
@@ -588,6 +590,7 @@ async function analyse(bytes) {
   els.stampCard.hidden = false;
   els.fieldsCard.hidden = false;
   els.actions.hidden = false;
+  els.fillActions.hidden = false;
 
   syncInputs();
   renderFields();

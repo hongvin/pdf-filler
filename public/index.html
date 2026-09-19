@@ -19,6 +19,12 @@
   <div class="topbar-right">
     <span id="configPill" class="pill pill-muted" title="Values pulled from environment variables">checking config…</span>
     <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
+    <!-- Hidden until a document has been analysed; nothing to fill before that.
+         It sits in the sticky header so it stays reachable on a long page. -->
+    <div id="fillActions" class="fill-actions" hidden>
+      <span id="fillStatus" class="muted small"></span>
+      <button id="fillBtn" class="btn btn-primary btn-lg" type="button">Fill &amp; download PDF</button>
+    </div>
   </div>
 </header>
 
@@ -183,8 +189,6 @@
         <input id="vStrip" type="checkbox" checked>
         <span>Remove old annotations sitting on these blanks</span>
       </label>
-      <button id="fillBtn" class="btn btn-primary btn-lg" type="button">Fill &amp; download PDF</button>
-      <span id="fillStatus" class="muted small"></span>
     </div>
   </section>
 

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Form Filler — signature &amp; stamp</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>Form Filler</h1>
+      <p class="sub">Drop in a declaration PDF — blanks are detected, then signed and stamped.</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="configPill" class="pill pill-muted" title="Values pulled from environment variables">checking config…</span>
+    <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main class="layout">
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="col col-left">
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Choose a PDF file">
+      <input id="fileInput" type="file" accept="application/pdf,.pdf" hidden>
+      <div class="dz-inner">
+        <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+          <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 15v2.5A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V15"
+                fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <strong>Drop a PDF here</strong>
+        <span>or click to browse — the file never leaves your browser</span>
+      </div>
+    </div>
+
+    <div id="fileCard" class="card file-card" hidden>
+      <div class="file-row">
+        <div class="file-meta">
+          <strong id="fileName">—</strong>
+          <span id="fileInfo" class="muted"></span>
+        </div>
+        <button id="clearFile" class="btn btn-ghost btn-sm" type="button">Remove</button>
+      </div>
+      <div id="detectNote" class="note" hidden></div>
+    </div>
+
+    <!-- values ------------------------------------------------------- -->
+    <div class="card" id="valuesCard" hidden>
+      <h2>Values</h2>
+      <div class="grid2">
+        <label class="field">
+          <span>Full name</span>
+          <input id="vName" type="text" placeholder="Koay Hong Vin" autocomplete="name">
+        </label>
+        <label class="field">
+          <span>IC number <em id="icSource" class="src"></em></span>
+          <div class="input-row">
+            <input id="vIc" type="password" placeholder="000000-00-0000" autocomplete="off">
+            <button id="icEye" class="btn btn-ghost btn-sm" type="button" title="Show / hide">show</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>Company name</span>
+          <input id="vCompany" type="text" placeholder="ACME SDN. BHD.">
+        </label>
+        <label class="field">
+          <span>Company reg. no.</span>
+          <input id="vCompanyReg" type="text" placeholder="202301036017">
+        </label>
+        <label class="field">
+          <span>Date</span>
+          <input id="vDate" type="text" placeholder="18 September 2026">
+        </label>
+      </div>
+      <p class="hint">The IC number is served from <code>BIDDER_IC</code> on the server when set, so it is never baked into the page bundle.</p>
+    </div>
+
+    <!-- fields ------------------------------------------------------- -->
+    <div class="card" id="fieldsCard" hidden>
+      <div class="card-head">
+        <h2>Detected blanks</h2>
+        <span id="fieldCount" class="pill pill-muted">0</span>
+      </div>
+      <div class="table-wrap">
+        <table class="fields">
+          <thead>
+            <tr><th>Page</th><th>Label found</th><th>Fill as</th><th class="ta-c">Clear</th></tr>
+          </thead>
+          <tbody id="fieldsBody"></tbody>
+        </table>
+      </div>
+      <p class="hint">Every row is a guess. Change <strong>Fill as</strong> to correct one, or set it to <em>ignore</em> to leave the blank alone.</p>
+    </div>
+
+    <!-- signature ---------------------------------------------------- -->
+    <div class="card" id="signCard" hidden>
+      <h2>Signature</h2>
+      <div class="grid2">
+        <label class="field">
+          <span>Signed as</span>
+          <input id="vSigText" type="text" placeholder="HongVin">
+        </label>
+        <label class="field">
+          <span>Typeface</span>
+          <select id="vSigFont"></select>
+        </label>
+        <label class="field">
+          <span>Size <output id="sigScaleOut" class="out">1.0×</output></span>
+          <input id="vSigScale" type="range" min="0.5" max="1.8" step="0.05" value="1">
+        </label>
+      </div>
+      <div class="inline">
+        <button id="sigUploadBtn" class="btn btn-ghost btn-sm" type="button">Use a scanned signature…</button>
+        <button id="sigClearBtn" class="btn btn-ghost btn-sm" type="button" hidden>Remove scan</button>
+        <input id="sigUpload" type="file" accept="image/png,image/jpeg" hidden>
+        <span id="sigState" class="muted small"></span>
+      </div>
+    </div>
+
+    <!-- stamp -------------------------------------------------------- -->
+    <div class="card" id="stampCard" hidden>
+      <h2>Company stamp</h2>
+      <div class="seg" role="tablist">
+        <button class="seg-btn is-on" data-stamp="generated" type="button">Generate one</button>
+        <button class="seg-btn" data-stamp="image" type="button">Use a scan</button>
+      </div>
+      <div id="stampGenOpts">
+        <div class="grid2">
+          <label class="field">
+            <span>Centre line 1</span>
+            <input id="vStampLine1" type="text" placeholder="202301036017">
+          </label>
+          <label class="field">
+            <span>Centre line 2</span>
+            <input id="vStampLine2" type="text" placeholder="(1529940-V)">
+          </label>
+          <label class="field">
+            <span>Size <output id="stampScaleOut" class="out">1.0×</output></span>
+            <input id="vStampScale" type="range" min="0.5" max="1.8" step="0.05" value="1">
+          </label>
+          <label class="field">
+            <span>Bottom of ring</span>
+            <select id="vStampBottomMode">
+              <option value="star">Five-point star</option>
+              <option value="text">Text</option>
+            </select>
+          </label>
+        </div>
+        <label class="field" id="stampBottomTextRow" hidden>
+          <span>Bottom text</span>
+          <input id="vStampBottom" type="text" placeholder="MALAYSIA">
+        </label>
+      </div>
+      <div id="stampImgOpts" hidden>
+        <div class="inline">
+          <button id="stampUploadBtn" class="btn btn-ghost btn-sm" type="button">Upload stamp image (PNG)…</button>
+          <button id="stampClearBtn" class="btn btn-ghost btn-sm" type="button" hidden>Remove</button>
+          <input id="stampUpload" type="file" accept="image/png,image/jpeg" hidden>
+        </div>
+        <p class="hint">A PNG with a transparent background works best.</p>
+      </div>
+    </div>
+
+    <div class="actions" id="actions" hidden>
+      <label class="check" id="stripRow" hidden>
+        <input id="vStrip" type="checkbox" checked>
+        <span>Remove old annotations sitting on these blanks</span>
+      </label>
+      <button id="fillBtn" class="btn btn-primary btn-lg" type="button">Fill &amp; download PDF</button>
+      <span id="fillStatus" class="muted small"></span>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- -->
+  <section class="col col-right">
+    <div class="preview-shell">
+      <div class="preview-head">
+        <h2>Preview</h2>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div id="preview" class="preview">
+        <div class="empty" id="previewEmpty">
+          <p>Nothing loaded yet.</p>
+          <p class="muted small">Detected blanks appear here, colour-coded by what they will be filled with.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="./vendor/pdf-lib.min.js"></script>
+<script src="./vendor/fontkit.umd.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

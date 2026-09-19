@@ -1,0 +1,20 @@
+# Copy to .dev.vars for `wrangler pages dev`.
+#
+# APP_PASSWORD doubles as the on/off switch for the access gate. If it is
+# unset, /api/config refuses to serve (503) rather than exposing the IC number,
+# so the site can never go public by accident.
+
+APP_PASSWORD=change-me
+APP_USER=bidder
+
+BIDDER_NAME=Koay Hong Vin
+BIDDER_IC=
+BIDDER_COMPANY=EDGE INTELLIGENCE SDN. BHD.
+BIDDER_COMPANY_REG=202301036017
+
+SIGNATURE_TEXT=HongVin
+SIGNATURE_FONT=KaushanScript
+STAMP_LINE2=
+# Optional. Setting this replaces the star at the bottom of the stamp with
+# arced text (e.g. MALAYSIA).
+STAMP_BOTTOM_TEXT=

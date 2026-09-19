@@ -1,0 +1,11 @@
+{
+  "name": "pdf-filler",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fill Malaysian statutory declaration / bidder declaration PDFs with name, IC, cursive signature and company stamp.",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public"
+  }
+}

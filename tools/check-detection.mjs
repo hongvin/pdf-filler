@@ -11,8 +11,8 @@
  *    just because the document prints a company name. It used to be, which put
  *    the company name on the "Jawatan" line of a declaration.
  * 3. An unlabelled blank IS still offered as the company field.
- * 4. A dot leader merged with a drawn rule is reported as clearable, so the
- *    printed dots can be whited out.
+ * 4. A dot leader merged with a drawn rule is classified as `mixed`, so the
+ *    blank can be told apart from a plain drawn rule.
  */
 
 import fs from 'node:fs';
@@ -22,7 +22,7 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import * as PDFLib from 'pdf-lib';
 import { detectBlanks } from '../public/lib/detect.js';
 import { assignRoles } from '../public/lib/roles.js';
-import { hasPrintedDots, shouldClearDots } from '../public/lib/fill.js';
+import { hasPrintedDots } from '../public/lib/fill.js';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const { PDFDocument, StandardFonts, rgb } = PDFLib;
@@ -136,11 +136,16 @@ async function analyse(doc) {
 
   const { blanks } = await analyse(doc);
   const region = blanks[0];
-  check('a merged dot+rule region is reported as clearable',
-    !!region && region.kind === 'mixed' && shouldClearDots(region),
-    region && `kind=${region.kind} shouldClearDots=${shouldClearDots(region)}`);
-  check('the fields table would offer a Clear checkbox for it',
-    !!region && hasPrintedDots(region), region && `kind=${region.kind}`);
+  // Clearing no longer happens — the dotted line is the form's own structure.
+  // What still matters here is that the merged region is classified `mixed`
+  // (so callers can tell it apart from a plain drawn rule) and that
+  // hasPrintedDots correctly flags it.
+  check('a merged dot+rule region is classified as mixed',
+    !!region && region.kind === 'mixed',
+    region && `kind=${region.kind}`);
+  check('hasPrintedDots still flags the merged region',
+    !!region && hasPrintedDots(region),
+    region && `kind=${region.kind} hasPrintedDots=${hasPrintedDots(region)}`);
   check('the merged region still resolves to a role', !!region && region.role === 'name',
     region && `role=${region.role} label=${JSON.stringify(region.label)}`);
 }

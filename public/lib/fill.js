@@ -30,36 +30,18 @@ function fitSize(font, text, maxWidth, startSize) {
   return size;
 }
 
-/** Erase the printed dots so the typed value doesn't sit on top of them. */
-function clearDots(page, blank, PDFLib, pad = 0.5) {
-  const s = blank.size;
-  page.drawRectangle({
-    x: blank.x0 - pad,
-    y: blank.baseline - s * 0.18,
-    width: (blank.x1 - blank.x0) + pad * 2,
-    height: s * 0.42,
-    color: PDFLib.rgb(1, 1, 1),
-  });
-}
-
 /**
- * Does this blank have printed filler that *could* be whited out?
+ * Does this blank have printed filler alongside it?
  *
  * `mixed` counts: it is what detection reports when a dot leader and a drawn
- * rule merge into one region (a Word line with a bottom border, say). There are
- * still dots in there, so they still have to go. The band `clearDots` paints is
- * only 0.42em tall and sits above the rule, so the rule itself survives.
- *
- * Exported so the fields table and the writer cannot drift apart on this — they
- * previously both tested `kind === 'dots'` and both therefore skipped `mixed`.
+ * rule merge into one region (a Word line with a bottom border, say). The
+ * filler no longer whitens the dot band before writing — the dotted line is
+ * the form's own structure, and the value is meant to sit on top of it — but
+ * the predicate is still useful to callers that want to know whether a blank
+ * has printed guide marks.
  */
 export function hasPrintedDots(blank) {
   return blank.kind === 'dots' || blank.kind === 'mixed';
-}
-
-/** Same question, but honouring the per-row "Clear" checkbox. */
-export function shouldClearDots(blank) {
-  return blank.clear !== false && hasPrintedDots(blank);
 }
 
 /**
@@ -223,7 +205,9 @@ export async function fillDocument({ PDFLib, fontkit, pdfBytes, blanks, config }
     }
 
     // --- drawn / detected region ---------------------------------------
-    if (shouldClearDots(blank)) clearDots(page, blank, PDFLib);
+    // No white-out here: the dotted line is part of the form, and the value
+    // sits on top of it. Signature and stamp are opaque enough that any dots
+    // underneath are hidden by the ink; dots outside the ink footprint remain.
 
     if (blank.role === 'signature') {
       drawSignature(page, blank, { script, serif, signatureImage, config, PDFLib, rgb });

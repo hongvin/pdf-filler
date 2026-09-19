@@ -12,16 +12,23 @@ number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
   - `lib/metrics.js` — glyph advance widths for standard PDF fonts
   - `lib/detect.js` — blank detection + label inference
   - `lib/roles.js` — label → semantic role rules
-  - `lib/stamp.js` — vector company stamp
+  - `lib/stamp.js` — vector company stamp (the "Generate one" mode)
   - `lib/fill.js` — pdf-lib writer, AcroForm + annotation handling
   - `vendor/`, `fonts/` — vendored, no runtime CDN
+  - `stamp/company-stamp.png` — the bundled company stamp artwork (default mode)
 - `functions/` — `_middleware.js` (Basic auth gate), `api/config.js`
 - `tools/` — headless test harness + render helpers (not deployed)
   - `test.mjs` — runs the real lib modules against a PDF and prints the blanks
   - `check-detection.mjs` — asserts the detection behaviours; run after touching
     `lib/detect.js` or `lib/roles.js`
+  - `check-ui-refs.mjs` — asserts `app.js`'s ids/`els.*` keys still exist in
+    `index.html` and that the stamp modes agree across markup/app/writer. Run
+    after touching either file.
   - `make-fixtures.mjs` — acroform / underline / `rect` fixtures. `fixture-rect`
     exists because pdf-lib only emits one path encoding; see below.
+  - `stamp-compare.mjs` + `stamp-render.py` — render both stamp modes and
+    measure their footprints. Measure on the **isolated** page it writes, never
+    on the template; see below.
 
 ## Conventions
 
@@ -34,9 +41,12 @@ number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
   public internet.
 - The IC number must never be written to `localStorage` (see `writeSettings`,
   which strips it) and never baked into a bundle — it comes from `/api/config`.
-- **Dot clearing has one predicate**: `hasPrintedDots()` / `shouldClearDots()`
-  in `lib/fill.js`. The fields table and the writer must both use it — they
-  independently tested `kind === 'dots'` once and both skipped `mixed` regions.
+- **Dot clearing is off.** Earlier builds whited out the dot band across the full
+  blank before writing the typed value, which erased the entire dotted leader
+  for every filled row. The dotted line is the form's own structure; the value
+  should sit on it, not replace it. `clearDots` and `shouldClearDots` are gone;
+  `hasPrintedDots` is kept as a kind classification (`dots` / `mixed`) for
+  callers that need it. The fields table no longer has a Clear column.
 - **Path encodings differ.** pdf.js delivers the `re` operator as a
   `constructPath` whose command list is `[OPS.rectangle]`, not as a standalone
   op. `findUnderlines` must consume every command or it skips the path. Do not
@@ -46,6 +56,20 @@ number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
 - Never clear the file input before `file.arrayBuffer()` resolves — Chromium
   releases the File's backing store and the read fails with `NotReadableError`
   (intermittent, so it looks like a corrupt file).
+- **The stamp has one size constant.** `STAMP_DIAMETER_EM` (8.66em) in
+  `lib/fill.js` drives both the generated ring and the image path, which share a
+  centre too. The image path once used its own 4.6em formula and printed at half
+  size. Do not give either mode its own arithmetic.
+- **The bundled stamp is fetched, not stored.** It is read into memory at boot
+  and deliberately kept out of `localStorage` (~180 KB of base64 that never
+  changes, against a ~5 MB quota). Swapping the artwork = replacing that one PNG.
+- **Stamp modes are `logo` | `generated` | `upload`.** `image` is a legacy value
+  and survives only as a migration in `loadSettings`; an unrecognised mode falls
+  back to the default, because `setStampMode` has no branch for it and the card
+  would render empty. `check-ui-refs.mjs` enforces this.
+- **Trim a stamp image to its ink bounding box before shipping it.** Sizing is
+  driven off the frame, so transparent padding prints the stamp small. The
+  original of the bundled artwork had 11% of its width as dead margin.
 
 ## Version control
 

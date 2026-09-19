@@ -35,10 +35,11 @@ above. The label is then matched against a rule table:
 
 Every guess is shown in a table and is overridable before you fill.
 
-**3. Fills it.** pdf-lib writes the values into the page content stream. The
-printed dots are whited out first so the typed text does not sit on top of them.
-Text uses Times-Roman to match the template; the signature is set in one of four
-bundled script faces (Kaushan Script by default).
+**3. Fills it.** pdf-lib writes the values into the page content stream. Text
+uses Times-Roman to match the template; the signature is set in one of four
+bundled script faces (Kaushan Script by default). The dotted leaders are kept —
+the value sits *on* the dotted line, the way a hand-filled form looks. Nothing
+is whited out.
 
 The stamp has three sources, picked from the segmented control:
 
@@ -322,12 +323,12 @@ the Functions bundle did not upload.
   rewriting one of those — "Jawatan", say — prints the company name on the wrong
   line of a declaration. A wrong guess here is worse than leaving the field for
   the user to set.
-- **A dot leader merged with a drawn rule is `kind: 'mixed'`, and still
-  clearable.** A Word line with a bottom border merges into one region. Both the
-  fields table and the writer used to test `kind === 'dots'`, so a `mixed`
-  region silently kept its printed dots and offered no way to remove them. They
-  now share `hasPrintedDots()` / `shouldClearDots()` in `fill.js` so they cannot
-  drift apart again.
+- **A dot leader merged with a drawn rule is `kind: 'mixed'`.** A Word line with
+  a bottom border merges into one region. It used to need separate treatment
+  because the writer only checked `kind === 'dots'`; the predicate is now just
+  `hasPrintedDots()` (`kind === 'dots' || kind === 'mixed'`), which classifies
+  the region for any caller that wants to tell a printable guide from a plain
+  drawn rule. Nothing is whited out either way.
 - **Form-field widgets live in `/Annots` too.** The stale-annotation cleanup
   must skip anything with `/Subtype /Widget`, or it deletes the very fields it
   is about to write into.

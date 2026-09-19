@@ -10,7 +10,7 @@
 import * as pdfjsLib from './vendor/pdf.min.mjs';
 import { ROLES, ROLE_BY_ID } from './lib/roles.js';
 import { analyseDocument } from './lib/analyse.js';
-import { fillDocument, countOverlappingAnnotations, hasPrintedDots } from './lib/fill.js';
+import { fillDocument, countOverlappingAnnotations } from './lib/fill.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.mjs';
 
@@ -606,7 +606,7 @@ function renderFields() {
   if (!state.blanks.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 4;
+    td.colSpan = 3;
     td.className = 'muted';
     td.textContent = 'Nothing detected.';
     tr.appendChild(td);
@@ -645,20 +645,7 @@ function renderFields() {
     });
     tdRole.appendChild(sel);
 
-    const tdClear = document.createElement('td');
-    tdClear.className = 'ta-c';
-    if (hasPrintedDots(b)) {
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = b.clear !== false;
-      cb.title = 'White out the printed dots before writing';
-      cb.addEventListener('change', () => { b.clear = cb.checked; });
-      tdClear.appendChild(cb);
-    } else {
-      tdClear.innerHTML = '<span class="muted">—</span>';
-    }
-
-    tr.append(tdPage, tdLabel, tdRole, tdClear);
+    tr.append(tdPage, tdLabel, tdRole);
     body.appendChild(tr);
   }
 

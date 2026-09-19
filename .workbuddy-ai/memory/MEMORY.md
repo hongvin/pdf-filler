@@ -17,6 +17,11 @@ number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
   - `vendor/`, `fonts/` — vendored, no runtime CDN
 - `functions/` — `_middleware.js` (Basic auth gate), `api/config.js`
 - `tools/` — headless test harness + render helpers (not deployed)
+  - `test.mjs` — runs the real lib modules against a PDF and prints the blanks
+  - `check-detection.mjs` — asserts the detection behaviours; run after touching
+    `lib/detect.js` or `lib/roles.js`
+  - `make-fixtures.mjs` — acroform / underline / `rect` fixtures. `fixture-rect`
+    exists because pdf-lib only emits one path encoding; see below.
 
 ## Conventions
 
@@ -27,8 +32,27 @@ number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
 - The access gate fails **closed**: no `APP_PASSWORD` → `/api/*` returns 503.
   Never change this to fail open — it is what keeps the IC number off the
   public internet.
-- The IC number must never be written to `localStorage` (see `saveSettings`,
+- The IC number must never be written to `localStorage` (see `writeSettings`,
   which strips it) and never baked into a bundle — it comes from `/api/config`.
+- **Dot clearing has one predicate**: `hasPrintedDots()` / `shouldClearDots()`
+  in `lib/fill.js`. The fields table and the writer must both use it — they
+  independently tested `kind === 'dots'` once and both skipped `mixed` regions.
+- **Path encodings differ.** pdf.js delivers the `re` operator as a
+  `constructPath` whose command list is `[OPS.rectangle]`, not as a standalone
+  op. `findUnderlines` must consume every command or it skips the path. Do not
+  trust a green `fixture-underline.pdf` run to prove drawn-rule detection.
+- The company-name hint (`lib/roles.js`) may only claim a blank with **no
+  label**. `role === 'ignore'` includes labelled-but-unrecognised blanks.
+- Never clear the file input before `file.arrayBuffer()` resolves — Chromium
+  releases the File's backing store and the read fails with `NotReadableError`
+  (intermittent, so it looks like a corrupt file).
+
+## Version control
+
+Initialised 2026-09-19 (`main`, one initial commit). Identity is set
+**repo-locally** (`Koay Hong Vin` / `khvmaths2016@gmail.com`) — change it with
+`git config user.email …` if that is wrong. `.dev.vars` is ignored; `node_modules`
+is a sandbox symlink, so the ignore pattern has no trailing slash.
 
 ## Deploy
 

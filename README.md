@@ -2,7 +2,7 @@
 
 Drop in a Malaysian bidder's declaration (or any fill-in-the-blank PDF) and get
 it back with your name, IC number, a cursive signature and a company stamp
-applied. Runs entirely in the browser and deploys to Cloudflare Pages.
+applied. Runs entirely in the browser and deploys to Cloudflare Workers.
 
 Built for templates like `SURAT AKUAN PEMBIDA` / `LAMPIRAN 6`, where the blanks
 are rows of dots rather than real PDF form fields.
@@ -73,8 +73,8 @@ public/                 ← the deployable site
   fonts/                ← four script faces for the signature (all OFL)
   stamp/
     company-stamp.png   ← the bundled company stamp artwork
-functions/
-  api/config.js         ← serves BIDDER_* env vars
+worker.js               ← the Worker: /api/config + asset passthrough
+wrangler.toml           ← assets binding, vars, compatibility date
 tools/                  ← headless test harness + render helpers
 ```
 
@@ -85,11 +85,10 @@ unmodified in the browser and under Node in `tools/test.mjs`.
 
 ## Configuration
 
-Set these as Cloudflare Pages environment variables. `BIDDER_IC` should be a
-**secret**:
+Set these as Worker environment variables. `BIDDER_IC` should be a **secret**:
 
 ```bash
-npx wrangler pages secret put BIDDER_IC --project-name pdf-filler
+npx wrangler secret put BIDDER_IC
 ```
 
 | Variable | Purpose |
@@ -146,12 +145,10 @@ belongs in a secret.
 To change the IC:
 
 ```bash
-npx wrangler pages secret put BIDDER_IC --project-name pdf-filler
-npx wrangler pages deploy public --project-name pdf-filler --commit-dirty=true
+npx wrangler secret put BIDDER_IC
 ```
 
-Secrets are bound at deploy time, so a redeploy is needed before the new value
-is served.
+Worker secrets take effect on the next request — no redeploy needed.
 
 ### About the access gate
 
@@ -160,32 +157,38 @@ middleware; it was removed so that access could be enforced by **Cloudflare
 Access** (Zero Trust) instead. Access gives you SSO, per-identity policies,
 MFA and an audit log — all things a shared password cannot do.
 
-Two things this changes, and they matter:
+This is why the project runs on a **Worker rather than Pages**. A Pages project
+always exposes `<project>.pages.dev`, and that hostname cannot be removed or
+used as an Access application domain (Access domains must belong to a zone on
+your account; `pages.dev` is Cloudflare's). A Worker's public `workers.dev`
+route can be disabled outright, or gated with Access from the dashboard.
+
+Two things to keep in mind:
 
 - **`/api/config` is public.** It returns `icNumber`. Anything that can reach
-  the origin can read it. Access must be the only way in.
-- **`*.pages.dev` is not covered by Access.** Access applications must point at
-  a hostname in a zone on your account, so `<project>.pages.dev` cannot be the
-  application domain. You need a custom domain on the Pages project, and you
-  should assume the `pages.dev` URL bypasses Access entirely until you block it.
+  the Worker can read it. Access must be the only way in.
+- **Access is not on by default.** Deploying does not protect anything.
 
-To set it up:
+To gate it, pick one:
 
-1. Pages project → **Custom domains** → add a hostname in your own zone, e.g.
-   `forms.example.com`.
-2. Zero Trust → **Access controls → Applications → Add an application** →
-   **Self-hosted and private** → **Add public hostname** → pick that domain.
-3. Add an Allow policy (your email, or an email-domain rule), and set the
-   session duration.
-4. Optionally turn on **Apply instant authentication** so there is no
-   intermediate Access login page.
+**A — no custom domain needed.** Dashboard → Workers & Pages → `pdf-filler` →
+**Settings → Domains & Routes → workers.dev → Enable Cloudflare Access**. This
+puts an Access policy directly on `pdf-filler.<subdomain>.workers.dev`.
 
-`api/config.js` already sets `x-robots-tag: noindex, nofollow`, so the
-endpoint should not turn up in search results — that is a courtesy, not a
-control.
+**B — custom domain.** Add a hostname in your own zone as a Worker custom
+domain, then create a self-hosted Access application for it. Once that works,
+set `workers_dev = false` in `wrangler.toml` and redeploy so the dev URL stops
+serving altogether.
+
+Option B is the tighter one; option A is the fastest and still gives you a real
+login instead of a shared password.
+
+`worker.js` sets `x-robots-tag: noindex, nofollow` on the API response, so it
+should not turn up in search results — a courtesy, not a control.
 
 If you ever want the code-level gate back, it is one file in git history:
-`git show 022c93b:functions/_middleware.js > functions/_middleware.js`.
+`git show 022c93b:functions/_middleware.js > functions/_middleware.js` (and
+mount it from `worker.js`).
 
 ---
 
@@ -193,7 +196,7 @@ If you ever want the code-level gate back, it is one file in git history:
 
 ```bash
 cp .dev.vars.example .dev.vars     # then edit it
-npx wrangler pages dev public --port 8788
+npx wrangler dev --port 8788
 ```
 
 Open <http://127.0.0.1:8788>. There is nothing to log in to — local dev has no
@@ -262,23 +265,29 @@ python tools/crop.py tools/filled.pdf 2 240 685 380 800 zoom.png   # page 2, a r
 ## Deploy
 
 ```bash
-npx wrangler pages deploy public --project-name pdf-filler --commit-dirty=true
+npx wrangler deploy
 ```
 
-`wrangler pages deploy <dir>` picks up `functions/` from the working directory
-and uploads it as the Functions bundle — watch for `✨ Uploading Functions
-bundle` in the output. If it is missing, the site ships without the config
-endpoint.
+This uploads `worker.js` plus the 18 files in `public/` as one unit — watch for
+`Uploaded N of 18 assets` and the final URL. There is no separate Functions
+bundle any more.
 
 Verify afterwards:
 
 ```bash
-curl -o /dev/null -w '%{http_code}\n' https://pdf-filler.pages.dev/          # expect 401
-curl -o /dev/null -w '%{http_code}\n' https://pdf-filler.pages.dev/api/config # expect 401, not 404
+curl -o /dev/null -w '%{http_code}\n' https://pdf-filler.hongvin.workers.dev/           # expect 200
+curl -s  https://pdf-filler.hongvin.workers.dev/api/config | head -c 200                # expect JSON
 ```
 
-A `200` on the first means the gate is not enforcing. A `404` on the second means
-the Functions bundle did not upload.
+A `404` on the second means the Worker did not upload. Once Cloudflare Access
+is enabled (see "About the access gate"), both should be `302` to the Access
+login instead — that is success, not failure.
+
+**The old Pages project is still live.** Migrating did not remove it: the Pages
+deployment at `pdf-filler-7ju.pages.dev` keeps serving the last build it had,
+and it is not covered by Access. Delete the Pages project (or at least
+re-point it) once you are happy with the Worker, otherwise it remains a public
+copy of the same data.
 
 ---
 

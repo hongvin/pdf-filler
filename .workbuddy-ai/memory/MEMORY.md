@@ -4,11 +4,12 @@
 
 Browser-only filler for Malaysian statutory/bidder declaration PDFs
 (`SURAT AKUAN PEMBIDA`). Detects dot-leader blanks, then writes a name, IC
-number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
+number, a cursive signature and a company stamp. Deployed to **Cloudflare
+Workers** (Static Assets) at https://pdf-filler.hongvin.workers.dev.
 
 ## Layout
 
-- `public/` — deployable site, no build step
+- `public/` — static assets, no build step
   - `lib/metrics.js` — glyph advance widths for standard PDF fonts
   - `lib/detect.js` — blank detection + label inference
   - `lib/roles.js` — label → semantic role rules
@@ -16,7 +17,10 @@ number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
   - `lib/fill.js` — pdf-lib writer, AcroForm + annotation handling
   - `vendor/`, `fonts/` — vendored, no runtime CDN
   - `stamp/company-stamp.png` — the bundled company stamp artwork (default mode)
-- `functions/` — `_middleware.js` (Basic auth gate), `api/config.js`
+- `worker.js` — the Worker: `/api/config` + `env.ASSETS.fetch()` passthrough.
+  Re-applies the security headers in code; do not rely on `public/_headers`,
+  which is a Pages convention.
+- `wrangler.toml` — `main`, `[assets]` (`run_worker_first = true`), `[vars]`
 - `tools/` — headless test harness + render helpers (not deployed)
   - `test.mjs` — runs the real lib modules against a PDF and prints the blanks
   - `check-detection.mjs` — asserts the detection behaviours; run after touching
@@ -38,7 +42,9 @@ number, a cursive signature and a company stamp. Deployed to Cloudflare Pages.
   drops most Great Vibes glyphs. There is a comment on the line.
 - The access gate fails **closed**: no `APP_PASSWORD` → `/api/*` returns 503.
   Never change this to fail open — it is what keeps the IC number off the
-  public internet.
+  public internet. *(Historical: the code gate is gone as of 2026-10-29; access
+  is meant to come from Cloudflare Access. Restore the middleware from
+  `git show 022c93b:functions/_middleware.js` if Access is ever dropped.)*
 - The IC number must never be written to `localStorage` (see `writeSettings`,
   which strips it) and never baked into a bundle — it comes from `/api/config`.
 - **Dot clearing is off.** Earlier builds whited out the dot band across the full
@@ -81,44 +87,49 @@ is a sandbox symlink, so the ignore pattern has no trailing slash.
 ## Deploy
 
 ```
-npx wrangler pages deploy public --project-name pdf-filler --commit-dirty=true
+npx wrangler deploy
 ```
 
-Watch for `✨ Uploading Functions bundle`. Then verify:
+Uploads `worker.js` + the 18 files in `public/` as one unit. Then verify:
 
 ```
-curl -o /dev/null -w '%{http_code}\n' https://pdf-filler-7ju.pages.dev/           # 200
-curl -o /dev/null -w '%{http_code}\n' https://pdf-filler-7ju.pages.dev/api/config # 200, not 401
+curl -o /dev/null -w '%{http_code}\n' https://pdf-filler.hongvin.workers.dev/           # 200
+curl -s https://pdf-filler.hongvin.workers.dev/api/config | head -c 120                 # JSON
 ```
 
-**The production alias lags the deployment.** Immediately after a deploy the
-alias can still serve the previous Functions bundle for a minute or so. Check
-the deployment-specific URL (`https://<hash>.pdf-filler-7ju.pages.dev`) to see
-what was actually uploaded, then re-poll the alias.
+`wrangler deploy --dry-run` prints the binding table and asset count without
+pushing — the fastest way to catch a config mistake.
 
-Secrets: `BIDDER_IC`. Non-sensitive vars live in `wrangler.toml` under `[vars]`
-— confirmed to work for Pages projects.
+Secrets: `BIDDER_IC` (`wrangler secret put BIDDER_IC`). Worker secrets apply on
+the next request; no redeploy needed. Pages secrets do **not** carry over.
 
 ## Auth
 
 **There is no auth in code as of 2026-10-29.** `functions/_middleware.js` was
 deleted; access is meant to be enforced by Cloudflare Access. Restore the old
-gate with `git show 022c93b:functions/_middleware.js > functions/_middleware.js`
-if Access is ever dropped.
+gate with `git show 022c93b:functions/_middleware.js` if Access is ever dropped.
 
 The IC number is therefore served publicly by `/api/config`. That is accepted.
 
-Access **cannot** front `*.pages.dev` — an Access application domain must be in
-a zone on the account. The project needs a custom domain for Access to do
-anything, and `pages.dev` will bypass it until blocked.
+Why the project is a Worker and not Pages:
 
-`BIDDER_IC` is a Pages secret and is set (confirmed 2026-09-19). The old
-`APP_PASSWORD` secret is still bound but unused; leave it alone.
+- A Pages project **always** exposes `<project>.pages.dev`. It cannot be removed,
+  and it cannot be an Access application domain (Access domains must belong to a
+  zone on the account; `pages.dev` is Cloudflare's).
+- A Worker's `workers.dev` route **can** be disabled (`workers_dev = false`) and
+  **can** be gated with Access directly (Settings → Domains & Routes →
+  workers.dev → Enable Cloudflare Access), with no custom domain at all.
+
+`BIDDER_IC` is set as a Worker secret. The old Pages project still exists and
+still serves its last build — it must be deleted by hand.
 
 ## Open items
 
-- Attach a custom domain to the Pages project and put Cloudflare Access on it.
-- Consider a host-check middleware that 404s when `Host` is not the canonical
-  domain, otherwise Access is bypassable via the `pages.dev` URL.
+- Delete the `pdf-filler` **Pages** project. Until then
+  `pdf-filler-7ju.pages.dev` is a public, ungated copy of the same data.
+- Enable Cloudflare Access on the Worker (workers.dev route, or a custom domain
+  plus `workers_dev = false`).
+- Consider a host-check in `worker.js` that 404s when `Host` is not the
+  canonical domain, so a second hostname can never bypass Access.
 - `public/fonts/GreatVibes-Regular.ttf` is OFL; attribution is not surfaced in
   the UI yet.

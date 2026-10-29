@@ -1,12 +1,20 @@
 name = "pdf-filler"
+main = "worker.js"
 compatibility_date = "2026-09-18"
-pages_build_output_dir = "public"
+
+# Static site + one API route, served by a Worker rather than Pages. A Pages
+# project always exposes <project>.pages.dev and that hostname cannot be
+# removed or put behind Access; a Worker's workers.dev route can be disabled
+# or gated. See README "About the access gate".
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# Every request runs through worker.js so the security headers are applied to
+# static responses too, and so a host check can be added later in one place.
+run_worker_first = true
 
 # Non-sensitive values. Secrets (BIDDER_IC) are set separately:
-#   npx wrangler pages secret put BIDDER_IC --project-name pdf-filler
-#
-# There is no auth gate in code any more — access is enforced by Cloudflare
-# Access in front of the custom domain. See README "About the access gate".
+#   npx wrangler secret put BIDDER_IC
 [vars]
 BIDDER_NAME = "Koay Hong Vin"
 BIDDER_COMPANY = "EDGE INTELLIGENCE SDN. BHD."

@@ -87,15 +87,38 @@ npx wrangler pages deploy public --project-name pdf-filler --commit-dirty=true
 Watch for `✨ Uploading Functions bundle`. Then verify:
 
 ```
-curl -o /dev/null -w '%{http_code}\n' https://pdf-filler-7ju.pages.dev/           # 401
-curl -o /dev/null -w '%{http_code}\n' https://pdf-filler-7ju.pages.dev/api/config # 401, not 404
+curl -o /dev/null -w '%{http_code}\n' https://pdf-filler-7ju.pages.dev/           # 200
+curl -o /dev/null -w '%{http_code}\n' https://pdf-filler-7ju.pages.dev/api/config # 200, not 401
 ```
 
-Secrets: `APP_PASSWORD`, `BIDDER_IC`. Non-sensitive vars live in `wrangler.toml`
-under `[vars]` — confirmed to work for Pages projects.
+**The production alias lags the deployment.** Immediately after a deploy the
+alias can still serve the previous Functions bundle for a minute or so. Check
+the deployment-specific URL (`https://<hash>.pdf-filler-7ju.pages.dev`) to see
+what was actually uploaded, then re-poll the alias.
+
+Secrets: `BIDDER_IC`. Non-sensitive vars live in `wrangler.toml` under `[vars]`
+— confirmed to work for Pages projects.
+
+## Auth
+
+**There is no auth in code as of 2026-10-29.** `functions/_middleware.js` was
+deleted; access is meant to be enforced by Cloudflare Access. Restore the old
+gate with `git show 022c93b:functions/_middleware.js > functions/_middleware.js`
+if Access is ever dropped.
+
+The IC number is therefore served publicly by `/api/config`. That is accepted.
+
+Access **cannot** front `*.pages.dev` — an Access application domain must be in
+a zone on the account. The project needs a custom domain for Access to do
+anything, and `pages.dev` will bypass it until blocked.
+
+`BIDDER_IC` is a Pages secret and is set (confirmed 2026-09-19). The old
+`APP_PASSWORD` secret is still bound but unused; leave it alone.
 
 ## Open items
 
-- `BIDDER_IC` is not set on the deployment. The user planned to add it later.
+- Attach a custom domain to the Pages project and put Cloudflare Access on it.
+- Consider a host-check middleware that 404s when `Host` is not the canonical
+  domain, otherwise Access is bypassable via the `pages.dev` URL.
 - `public/fonts/GreatVibes-Regular.ttf` is OFL; attribution is not surfaced in
   the UI yet.

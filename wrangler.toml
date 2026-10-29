@@ -2,11 +2,12 @@ name = "pdf-filler"
 compatibility_date = "2026-09-18"
 pages_build_output_dir = "public"
 
-# Non-sensitive values. Secrets (APP_PASSWORD, BIDDER_IC) are set separately:
-#   npx wrangler pages secret put APP_PASSWORD --project-name pdf-filler
-#   npx wrangler pages secret put BIDDER_IC    --project-name pdf-filler
+# Non-sensitive values. Secrets (BIDDER_IC) are set separately:
+#   npx wrangler pages secret put BIDDER_IC --project-name pdf-filler
+#
+# There is no auth gate in code any more — access is enforced by Cloudflare
+# Access in front of the custom domain. See README "About the access gate".
 [vars]
-APP_USER = "bidder"
 BIDDER_NAME = "Koay Hong Vin"
 BIDDER_COMPANY = "EDGE INTELLIGENCE SDN. BHD."
 BIDDER_COMPANY_REG = "202301036017"

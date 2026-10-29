@@ -1,14 +1,16 @@
 /**
  * Values that should not be baked into the page bundle.
  *
- * The IC number in particular lives only here, so it is delivered over an
- * authenticated, non-cacheable request instead of being compiled into a JS file
- * that anyone could read.
+ * The IC number in particular lives only here, so it is delivered over a
+ * non-cacheable request instead of being compiled into a JS file.
+ *
+ * NOTE: this endpoint is public. The site no longer sits behind HTTP Basic
+ * auth (see README "About the access gate"), so anyone with the URL can read
+ * the response. That is a deliberate choice for a personal single-user tool —
+ * do not add more sensitive values here without putting the gate back.
  *
  * Set these as Pages secrets / environment variables:
  *
- *   APP_PASSWORD        shared password for the whole site (also enables auth)
- *   APP_USER            basic-auth username, defaults to "bidder"
  *   BIDDER_NAME         Koay Hong Vin
  *   BIDDER_IC           970529-02-5353
  *   BIDDER_COMPANY      EDGE INTELLIGENCE SDN. BHD.
@@ -31,21 +33,6 @@ const json = body => new Response(JSON.stringify(body), {
 });
 
 export async function onRequestGet({ env }) {
-  // Defence in depth: the middleware already blocks this when unset.
-  if (!env.APP_PASSWORD) {
-    return new Response(JSON.stringify({
-      error: 'not_configured',
-      message: 'APP_PASSWORD is not set, so this endpoint is switched off.',
-    }), {
-      status: 503,
-      headers: {
-        'content-type': 'application/json',
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      },
-    });
-  }
-
   return json({
     name: env.BIDDER_NAME || '',
     icNumber: env.BIDDER_IC || '',

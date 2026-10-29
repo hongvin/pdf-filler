@@ -74,7 +74,6 @@ public/                 ← the deployable site
   stamp/
     company-stamp.png   ← the bundled company stamp artwork
 functions/
-  _middleware.js        ← HTTP Basic auth gate
   api/config.js         ← serves BIDDER_* env vars
 tools/                  ← headless test harness + render helpers
 ```
@@ -86,18 +85,15 @@ unmodified in the browser and under Node in `tools/test.mjs`.
 
 ## Configuration
 
-Set these as Cloudflare Pages environment variables. `APP_PASSWORD` and
-`BIDDER_IC` should be **secrets**:
+Set these as Cloudflare Pages environment variables. `BIDDER_IC` should be a
+**secret**:
 
 ```bash
-npx wrangler pages secret put APP_PASSWORD --project-name pdf-filler
-npx wrangler pages secret put BIDDER_IC     --project-name pdf-filler
+npx wrangler pages secret put BIDDER_IC --project-name pdf-filler
 ```
 
 | Variable | Purpose |
 |---|---|
-| `APP_PASSWORD` | Shared password for the whole site. **Also the on/off switch for the gate.** |
-| `APP_USER` | Basic-auth username. Defaults to `bidder`. |
 | `BIDDER_NAME` | Full name, e.g. `Koay Hong Vin` |
 | `BIDDER_IC` | IC number. Served from the server so it is never in the JS bundle. |
 | `BIDDER_COMPANY` | Company name |
@@ -159,14 +155,37 @@ is served.
 
 ### About the access gate
 
-This app holds an IC number, so the default is to lock the whole site behind
-HTTP Basic auth. The gate **fails closed**: if `APP_PASSWORD` is unset, static
-files still serve so you can see what is wrong, but `/api/config` returns 503
-rather than handing out the IC number. It will not silently go public.
+There is **no auth in code**. The app used to ship an HTTP Basic auth
+middleware; it was removed so that access could be enforced by **Cloudflare
+Access** (Zero Trust) instead. Access gives you SSO, per-identity policies,
+MFA and an audit log — all things a shared password cannot do.
 
-If you genuinely want it public, delete `functions/_middleware.js` and
-`functions/api/config.js` and type the values in by hand — they persist in
-`localStorage` (the IC deliberately does not).
+Two things this changes, and they matter:
+
+- **`/api/config` is public.** It returns `icNumber`. Anything that can reach
+  the origin can read it. Access must be the only way in.
+- **`*.pages.dev` is not covered by Access.** Access applications must point at
+  a hostname in a zone on your account, so `<project>.pages.dev` cannot be the
+  application domain. You need a custom domain on the Pages project, and you
+  should assume the `pages.dev` URL bypasses Access entirely until you block it.
+
+To set it up:
+
+1. Pages project → **Custom domains** → add a hostname in your own zone, e.g.
+   `forms.example.com`.
+2. Zero Trust → **Access controls → Applications → Add an application** →
+   **Self-hosted and private** → **Add public hostname** → pick that domain.
+3. Add an Allow policy (your email, or an email-domain rule), and set the
+   session duration.
+4. Optionally turn on **Apply instant authentication** so there is no
+   intermediate Access login page.
+
+`api/config.js` already sets `x-robots-tag: noindex, nofollow`, so the
+endpoint should not turn up in search results — that is a courtesy, not a
+control.
+
+If you ever want the code-level gate back, it is one file in git history:
+`git show 022c93b:functions/_middleware.js > functions/_middleware.js`.
 
 ---
 
@@ -177,7 +196,9 @@ cp .dev.vars.example .dev.vars     # then edit it
 npx wrangler pages dev public --port 8788
 ```
 
-Open <http://127.0.0.1:8788> and log in with `APP_USER` / `APP_PASSWORD`.
+Open <http://127.0.0.1:8788>. There is nothing to log in to — local dev has no
+gate, the same as production. `.dev.vars` only supplies the `BIDDER_*` values
+that `/api/config` hands to the page.
 
 ### Headless check
 
